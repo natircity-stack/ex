@@ -1,122 +1,73 @@
-// PostgreSQL direct connection service
-interface WeeklyDataRow {
-  id: string;
-  start_date: string;
-  end_date: string;
-  total_users: number;
-  site_activities: number;
-  went_to_branch: number;
-  duplicates: number;
-  total_orders: number;
-  orders_shipped: number;
-  shipped_orders_amount: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface BonusRow {
-  id: string;
-  date: string;
-  rep_name: string;
-  bonus_amount: number;
-  notes: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// PostgreSQL connection configuration
-const DB_CONFIG = {
-  host: '31.97.33.157',
-  port: 5432,
-  database: 'postgres',
-  user: 'postgres',
-  password: 'Pinokio590@@',
-};
-
-// Since we can't use direct PostgreSQL connection in browser,
-// we'll create a simple REST API simulation using fetch to a backend
-// For now, we'll use localStorage as fallback and show how to implement the backend
+import { apiClient } from './api';
+import { DataRow, BonusRow } from '@/types';
 
 class DatabaseService {
-  private baseUrl = '/api'; // This would be your backend API URL
-  private useLocalStorage = true; // Switch to false when backend is ready
+  private useApi = apiClient.isAuthenticated();
 
   // Weekly Data Methods
-  async getAllWeeklyData(): Promise<WeeklyDataRow[]> {
-    if (this.useLocalStorage) {
+  async getAllWeeklyData(): Promise<DataRow[]> {
+    if (!this.useApi) {
       const data = localStorage.getItem('weeklyData');
-      return data ? JSON.parse(data) : [];
+      return data ? JSON.parse(data).map(this.transformWeeklyDataFromStorage) : [];
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/weekly-data`);
-      if (!response.ok) throw new Error('Failed to fetch weekly data');
-      return await response.json();
+      const data = await apiClient.getWeeklyData();
+      return data.map(this.transformWeeklyDataFromApi);
     } catch (error) {
       console.error('Error fetching weekly data:', error);
       // Fallback to localStorage
       const data = localStorage.getItem('weeklyData');
-      return data ? JSON.parse(data) : [];
+      return data ? JSON.parse(data).map(this.transformWeeklyDataFromStorage) : [];
     }
   }
 
-  async createWeeklyData(data: Omit<WeeklyDataRow, 'id' | 'created_at' | 'updated_at'>): Promise<WeeklyDataRow> {
-    const newRecord: WeeklyDataRow = {
-      ...data,
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    if (this.useLocalStorage) {
+  async createWeeklyData(data: Omit<DataRow, 'id'>): Promise<DataRow> {
+    if (!this.useApi) {
+      const newRecord: DataRow = {
+        ...data,
+        id: crypto.randomUUID(),
+      };
       const existing = await this.getAllWeeklyData();
       const updated = [...existing, newRecord];
-      localStorage.setItem('weeklyData', JSON.stringify(updated));
+      localStorage.setItem('weeklyData', JSON.stringify(updated.map(this.transformWeeklyDataToStorage)));
       return newRecord;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/weekly-data`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to create weekly data');
-      return await response.json();
+      const apiData = this.transformWeeklyDataToApi(data);
+      const result = await apiClient.createWeeklyData(apiData);
+      return this.transformWeeklyDataFromApi(result);
     } catch (error) {
       console.error('Error creating weekly data:', error);
       // Fallback to localStorage
+      const newRecord: DataRow = {
+        ...data,
+        id: crypto.randomUUID(),
+      };
       const existing = await this.getAllWeeklyData();
       const updated = [...existing, newRecord];
-      localStorage.setItem('weeklyData', JSON.stringify(updated));
+      localStorage.setItem('weeklyData', JSON.stringify(updated.map(this.transformWeeklyDataToStorage)));
       return newRecord;
     }
   }
 
-  async updateWeeklyData(id: string, data: Partial<WeeklyDataRow>): Promise<WeeklyDataRow> {
-    if (this.useLocalStorage) {
+  async updateWeeklyData(id: string, data: Omit<DataRow, 'id'>): Promise<DataRow> {
+    if (!this.useApi) {
       const existing = await this.getAllWeeklyData();
       const index = existing.findIndex(item => item.id === id);
       if (index === -1) throw new Error('Record not found');
       
-      const updated = {
-        ...existing[index],
-        ...data,
-        updated_at: new Date().toISOString(),
-      };
+      const updated = { ...existing[index], ...data };
       existing[index] = updated;
-      localStorage.setItem('weeklyData', JSON.stringify(existing));
+      localStorage.setItem('weeklyData', JSON.stringify(existing.map(this.transformWeeklyDataToStorage)));
       return updated;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/weekly-data/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update weekly data');
-      return await response.json();
+      const apiData = this.transformWeeklyDataToApi(data);
+      const result = await apiClient.updateWeeklyData(id, apiData);
+      return this.transformWeeklyDataFromApi(result);
     } catch (error) {
       console.error('Error updating weekly data:', error);
       throw error;
@@ -124,18 +75,15 @@ class DatabaseService {
   }
 
   async deleteWeeklyData(id: string): Promise<void> {
-    if (this.useLocalStorage) {
+    if (!this.useApi) {
       const existing = await this.getAllWeeklyData();
       const filtered = existing.filter(item => item.id !== id);
-      localStorage.setItem('weeklyData', JSON.stringify(filtered));
+      localStorage.setItem('weeklyData', JSON.stringify(filtered.map(this.transformWeeklyDataToStorage)));
       return;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/weekly-data/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete weekly data');
+      await apiClient.deleteWeeklyData(id);
     } catch (error) {
       console.error('Error deleting weekly data:', error);
       throw error;
@@ -144,80 +92,68 @@ class DatabaseService {
 
   // Bonus Methods
   async getAllBonuses(): Promise<BonusRow[]> {
-    if (this.useLocalStorage) {
+    if (!this.useApi) {
       const data = localStorage.getItem('bonuses');
-      return data ? JSON.parse(data) : [];
+      return data ? JSON.parse(data).map(this.transformBonusFromStorage) : [];
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/bonuses`);
-      if (!response.ok) throw new Error('Failed to fetch bonuses');
-      return await response.json();
+      const data = await apiClient.getBonuses();
+      return data.map(this.transformBonusFromApi);
     } catch (error) {
       console.error('Error fetching bonuses:', error);
       // Fallback to localStorage
       const data = localStorage.getItem('bonuses');
-      return data ? JSON.parse(data) : [];
+      return data ? JSON.parse(data).map(this.transformBonusFromStorage) : [];
     }
   }
 
-  async createBonus(data: Omit<BonusRow, 'id' | 'created_at' | 'updated_at'>): Promise<BonusRow> {
-    const newRecord: BonusRow = {
-      ...data,
-      id: crypto.randomUUID(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    if (this.useLocalStorage) {
+  async createBonus(data: Omit<BonusRow, 'id'>): Promise<BonusRow> {
+    if (!this.useApi) {
+      const newRecord: BonusRow = {
+        ...data,
+        id: crypto.randomUUID(),
+      };
       const existing = await this.getAllBonuses();
       const updated = [...existing, newRecord];
-      localStorage.setItem('bonuses', JSON.stringify(updated));
+      localStorage.setItem('bonuses', JSON.stringify(updated.map(this.transformBonusToStorage)));
       return newRecord;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/bonuses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to create bonus');
-      return await response.json();
+      const apiData = this.transformBonusToApi(data);
+      const result = await apiClient.createBonus(apiData);
+      return this.transformBonusFromApi(result);
     } catch (error) {
       console.error('Error creating bonus:', error);
       // Fallback to localStorage
+      const newRecord: BonusRow = {
+        ...data,
+        id: crypto.randomUUID(),
+      };
       const existing = await this.getAllBonuses();
       const updated = [...existing, newRecord];
-      localStorage.setItem('bonuses', JSON.stringify(updated));
+      localStorage.setItem('bonuses', JSON.stringify(updated.map(this.transformBonusToStorage)));
       return newRecord;
     }
   }
 
-  async updateBonus(id: string, data: Partial<BonusRow>): Promise<BonusRow> {
-    if (this.useLocalStorage) {
+  async updateBonus(id: string, data: Omit<BonusRow, 'id'>): Promise<BonusRow> {
+    if (!this.useApi) {
       const existing = await this.getAllBonuses();
       const index = existing.findIndex(item => item.id === id);
       if (index === -1) throw new Error('Record not found');
       
-      const updated = {
-        ...existing[index],
-        ...data,
-        updated_at: new Date().toISOString(),
-      };
+      const updated = { ...existing[index], ...data };
       existing[index] = updated;
-      localStorage.setItem('bonuses', JSON.stringify(existing));
+      localStorage.setItem('bonuses', JSON.stringify(existing.map(this.transformBonusToStorage)));
       return updated;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/bonuses/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update bonus');
-      return await response.json();
+      const apiData = this.transformBonusToApi(data);
+      const result = await apiClient.updateBonus(id, apiData);
+      return this.transformBonusFromApi(result);
     } catch (error) {
       console.error('Error updating bonus:', error);
       throw error;
@@ -225,37 +161,95 @@ class DatabaseService {
   }
 
   async deleteBonus(id: string): Promise<void> {
-    if (this.useLocalStorage) {
+    if (!this.useApi) {
       const existing = await this.getAllBonuses();
       const filtered = existing.filter(item => item.id !== id);
-      localStorage.setItem('bonuses', JSON.stringify(filtered));
+      localStorage.setItem('bonuses', JSON.stringify(filtered.map(this.transformBonusToStorage)));
       return;
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/bonuses/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete bonus');
+      await apiClient.deleteBonus(id);
     } catch (error) {
       console.error('Error deleting bonus:', error);
       throw error;
     }
   }
+
+  // Transform methods for API compatibility
+  private transformWeeklyDataFromApi(apiData: any): DataRow {
+    return {
+      id: crypto.randomUUID(),
+      startDate: apiData.start_date,
+      endDate: apiData.end_date,
+      totalUsers: apiData.total_users,
+      siteActivities: apiData.site_activities,
+      wentToBranch: apiData.went_to_branch,
+      duplicates: apiData.duplicates,
+      totalOrders: apiData.total_orders,
+      ordersShipped: apiData.orders_shipped,
+      shippedOrdersAmount: apiData.shipped_orders_amount,
+    };
+  }
+
+  private transformWeeklyDataToApi(data: Omit<DataRow, 'id'>): any {
+    return {
+      startDate: data.startDate,
+      endDate: data.endDate,
+      totalUsers: data.totalUsers,
+      siteActivities: data.siteActivities,
+      wentToBranch: data.wentToBranch,
+      duplicates: data.duplicates,
+      totalOrders: data.totalOrders,
+      ordersShipped: data.ordersShipped,
+      shippedOrdersAmount: data.shippedOrdersAmount,
+    };
+  }
+
+  private transformWeeklyDataFromStorage(storageData: any): DataRow {
+    return storageData;
+  }
+
+  private transformWeeklyDataToStorage(data: DataRow): any {
+    return data;
+  }
+
+  private transformBonusFromApi(apiData: any): BonusRow {
+    return {
+      id: apiData.id,
+      date: apiData.date,
+      repName: apiData.rep_name,
+      bonusAmount: apiData.bonus_amount,
+      notes: apiData.notes,
+    };
+  }
+
+  private transformBonusToApi(data: Omit<BonusRow, 'id'>): any {
+    return {
+      date: data.date,
+      repName: data.repName,
+      bonusAmount: data.bonusAmount,
+      notes: data.notes,
+    };
+  }
+
+  private transformBonusFromStorage(storageData: any): BonusRow {
+    return storageData;
+  }
+
+  private transformBonusToStorage(data: BonusRow): any {
+    return data;
+  }
 }
 
-// Export singleton instance
 export const databaseService = new DatabaseService();
-
-// Export types
-export type { WeeklyDataRow, BonusRow };
 
 // Weekly Data Service
 export const weeklyDataService = {
   getAll: () => databaseService.getAllWeeklyData(),
-  create: (data: Omit<WeeklyDataRow, 'id' | 'created_at' | 'updated_at'>) => 
+  create: (data: Omit<DataRow, 'id'>) => 
     databaseService.createWeeklyData(data),
-  update: (id: string, data: Partial<WeeklyDataRow>) => 
+  update: (id: string, data: Omit<DataRow, 'id'>) => 
     databaseService.updateWeeklyData(id, data),
   delete: (id: string) => databaseService.deleteWeeklyData(id),
 };
@@ -263,9 +257,9 @@ export const weeklyDataService = {
 // Bonuses Service
 export const bonusesService = {
   getAll: () => databaseService.getAllBonuses(),
-  create: (data: Omit<BonusRow, 'id' | 'created_at' | 'updated_at'>) => 
+  create: (data: Omit<BonusRow, 'id'>) => 
     databaseService.createBonus(data),
-  update: (id: string, data: Partial<BonusRow>) => 
+  update: (id: string, data: Omit<BonusRow, 'id'>) => 
     databaseService.updateBonus(id, data),
   delete: (id: string) => databaseService.deleteBonus(id),
 };
