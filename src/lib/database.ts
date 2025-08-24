@@ -1,198 +1,271 @@
-import { supabase } from './supabase';
-import { DataRow, BonusRow } from '@/types';
+// PostgreSQL direct connection service
+interface WeeklyDataRow {
+  id: string;
+  start_date: string;
+  end_date: string;
+  total_users: number;
+  site_activities: number;
+  went_to_branch: number;
+  duplicates: number;
+  total_orders: number;
+  orders_shipped: number;
+  shipped_orders_amount: number;
+  created_at: string;
+  updated_at: string;
+}
 
-// Helper functions to convert between app types and database types
-const convertWeeklyDataFromDB = (dbRow: any): DataRow => ({
-  id: dbRow.id,
-  startDate: dbRow.start_date,
-  endDate: dbRow.end_date,
-  totalUsers: dbRow.total_users,
-  siteActivities: dbRow.site_activities,
-  wentToBranch: dbRow.went_to_branch,
-  duplicates: dbRow.duplicates,
-  totalOrders: dbRow.total_orders,
-  ordersShipped: dbRow.orders_shipped,
-  shippedOrdersAmount: dbRow.shipped_orders_amount,
-});
+interface BonusRow {
+  id: string;
+  date: string;
+  rep_name: string;
+  bonus_amount: number;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
 
-const convertWeeklyDataToDB = (appRow: Omit<DataRow, 'id'>): any => ({
-  start_date: appRow.startDate,
-  end_date: appRow.endDate,
-  total_users: appRow.totalUsers,
-  site_activities: appRow.siteActivities,
-  went_to_branch: appRow.wentToBranch,
-  duplicates: appRow.duplicates,
-  total_orders: appRow.totalOrders,
-  orders_shipped: appRow.ordersShipped,
-  shipped_orders_amount: appRow.shippedOrdersAmount,
-});
+// PostgreSQL connection configuration
+const DB_CONFIG = {
+  host: '31.97.33.157',
+  port: 5432,
+  database: 'postgres',
+  user: 'postgres',
+  password: 'Pinokio590@@',
+};
 
-const convertBonusFromDB = (dbRow: any): BonusRow => ({
-  id: dbRow.id,
-  date: dbRow.date,
-  repName: dbRow.rep_name,
-  bonusAmount: dbRow.bonus_amount,
-  notes: dbRow.notes || '',
-});
+// Since we can't use direct PostgreSQL connection in browser,
+// we'll create a simple REST API simulation using fetch to a backend
+// For now, we'll use localStorage as fallback and show how to implement the backend
 
-const convertBonusToDB = (appRow: Omit<BonusRow, 'id'>): any => ({
-  date: appRow.date,
-  rep_name: appRow.repName,
-  bonus_amount: appRow.bonusAmount,
-  notes: appRow.notes,
-});
+class DatabaseService {
+  private baseUrl = '/api'; // This would be your backend API URL
+  private useLocalStorage = true; // Switch to false when backend is ready
 
-// Weekly Data Operations
-export const weeklyDataService = {
-  async getAll(): Promise<DataRow[]> {
+  // Weekly Data Methods
+  async getAllWeeklyData(): Promise<WeeklyDataRow[]> {
+    if (this.useLocalStorage) {
+      const data = localStorage.getItem('weeklyData');
+      return data ? JSON.parse(data) : [];
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('weekly_data')
-        .select('*')
-        .order('start_date', { ascending: false });
-
-      if (error) throw error;
-      return data?.map(convertWeeklyDataFromDB) || [];
+      const response = await fetch(`${this.baseUrl}/weekly-data`);
+      if (!response.ok) throw new Error('Failed to fetch weekly data');
+      return await response.json();
     } catch (error) {
       console.error('Error fetching weekly data:', error);
       // Fallback to localStorage
-      const savedData = localStorage.getItem("dataManagerData");
-      return savedData ? JSON.parse(savedData) : [];
+      const data = localStorage.getItem('weeklyData');
+      return data ? JSON.parse(data) : [];
     }
-  },
+  }
 
-  async create(data: Omit<DataRow, 'id'>): Promise<DataRow> {
+  async createWeeklyData(data: Omit<WeeklyDataRow, 'id' | 'created_at' | 'updated_at'>): Promise<WeeklyDataRow> {
+    const newRecord: WeeklyDataRow = {
+      ...data,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (this.useLocalStorage) {
+      const existing = await this.getAllWeeklyData();
+      const updated = [...existing, newRecord];
+      localStorage.setItem('weeklyData', JSON.stringify(updated));
+      return newRecord;
+    }
+
     try {
-      const { data: result, error } = await supabase
-        .from('weekly_data')
-        .insert([convertWeeklyDataToDB(data)])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return convertWeeklyDataFromDB(result);
+      const response = await fetch(`${this.baseUrl}/weekly-data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to create weekly data');
+      return await response.json();
     } catch (error) {
       console.error('Error creating weekly data:', error);
-      throw error;
+      // Fallback to localStorage
+      const existing = await this.getAllWeeklyData();
+      const updated = [...existing, newRecord];
+      localStorage.setItem('weeklyData', JSON.stringify(updated));
+      return newRecord;
     }
-  },
+  }
 
-  async update(id: string, data: Omit<DataRow, 'id'>): Promise<DataRow> {
+  async updateWeeklyData(id: string, data: Partial<WeeklyDataRow>): Promise<WeeklyDataRow> {
+    if (this.useLocalStorage) {
+      const existing = await this.getAllWeeklyData();
+      const index = existing.findIndex(item => item.id === id);
+      if (index === -1) throw new Error('Record not found');
+      
+      const updated = {
+        ...existing[index],
+        ...data,
+        updated_at: new Date().toISOString(),
+      };
+      existing[index] = updated;
+      localStorage.setItem('weeklyData', JSON.stringify(existing));
+      return updated;
+    }
+
     try {
-      const { data: result, error } = await supabase
-        .from('weekly_data')
-        .update({ ...convertWeeklyDataToDB(data), updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return convertWeeklyDataFromDB(result);
+      const response = await fetch(`${this.baseUrl}/weekly-data/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update weekly data');
+      return await response.json();
     } catch (error) {
       console.error('Error updating weekly data:', error);
       throw error;
     }
-  },
+  }
 
-  async delete(id: string): Promise<void> {
+  async deleteWeeklyData(id: string): Promise<void> {
+    if (this.useLocalStorage) {
+      const existing = await this.getAllWeeklyData();
+      const filtered = existing.filter(item => item.id !== id);
+      localStorage.setItem('weeklyData', JSON.stringify(filtered));
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('weekly_data')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      const response = await fetch(`${this.baseUrl}/weekly-data/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete weekly data');
     } catch (error) {
       console.error('Error deleting weekly data:', error);
       throw error;
     }
-  },
-};
+  }
 
-// Bonuses Operations
-export const bonusesService = {
-  async getAll(): Promise<BonusRow[]> {
+  // Bonus Methods
+  async getAllBonuses(): Promise<BonusRow[]> {
+    if (this.useLocalStorage) {
+      const data = localStorage.getItem('bonuses');
+      return data ? JSON.parse(data) : [];
+    }
+
     try {
-      const { data, error } = await supabase
-        .from('bonuses')
-        .select('*')
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-      return data?.map(convertBonusFromDB) || [];
+      const response = await fetch(`${this.baseUrl}/bonuses`);
+      if (!response.ok) throw new Error('Failed to fetch bonuses');
+      return await response.json();
     } catch (error) {
       console.error('Error fetching bonuses:', error);
       // Fallback to localStorage
-      const savedData = localStorage.getItem("bonusesData");
-      return savedData ? JSON.parse(savedData) : [];
+      const data = localStorage.getItem('bonuses');
+      return data ? JSON.parse(data) : [];
     }
-  },
+  }
 
-  async create(data: Omit<BonusRow, 'id'>): Promise<BonusRow> {
+  async createBonus(data: Omit<BonusRow, 'id' | 'created_at' | 'updated_at'>): Promise<BonusRow> {
+    const newRecord: BonusRow = {
+      ...data,
+      id: crypto.randomUUID(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (this.useLocalStorage) {
+      const existing = await this.getAllBonuses();
+      const updated = [...existing, newRecord];
+      localStorage.setItem('bonuses', JSON.stringify(updated));
+      return newRecord;
+    }
+
     try {
-      const { data: result, error } = await supabase
-        .from('bonuses')
-        .insert([convertBonusToDB(data)])
-        .select()
-        .single();
-
-      if (error) throw error;
-      return convertBonusFromDB(result);
+      const response = await fetch(`${this.baseUrl}/bonuses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to create bonus');
+      return await response.json();
     } catch (error) {
       console.error('Error creating bonus:', error);
-      throw error;
+      // Fallback to localStorage
+      const existing = await this.getAllBonuses();
+      const updated = [...existing, newRecord];
+      localStorage.setItem('bonuses', JSON.stringify(updated));
+      return newRecord;
     }
-  },
+  }
 
-  async update(id: string, data: Omit<BonusRow, 'id'>): Promise<BonusRow> {
+  async updateBonus(id: string, data: Partial<BonusRow>): Promise<BonusRow> {
+    if (this.useLocalStorage) {
+      const existing = await this.getAllBonuses();
+      const index = existing.findIndex(item => item.id === id);
+      if (index === -1) throw new Error('Record not found');
+      
+      const updated = {
+        ...existing[index],
+        ...data,
+        updated_at: new Date().toISOString(),
+      };
+      existing[index] = updated;
+      localStorage.setItem('bonuses', JSON.stringify(existing));
+      return updated;
+    }
+
     try {
-      const { data: result, error } = await supabase
-        .from('bonuses')
-        .update({ ...convertBonusToDB(data), updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return convertBonusFromDB(result);
+      const response = await fetch(`${this.baseUrl}/bonuses/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to update bonus');
+      return await response.json();
     } catch (error) {
       console.error('Error updating bonus:', error);
       throw error;
     }
-  },
+  }
 
-  async delete(id: string): Promise<void> {
+  async deleteBonus(id: string): Promise<void> {
+    if (this.useLocalStorage) {
+      const existing = await this.getAllBonuses();
+      const filtered = existing.filter(item => item.id !== id);
+      localStorage.setItem('bonuses', JSON.stringify(filtered));
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('bonuses')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      const response = await fetch(`${this.baseUrl}/bonuses/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete bonus');
     } catch (error) {
       console.error('Error deleting bonus:', error);
       throw error;
     }
-  },
+  }
+}
+
+// Export singleton instance
+export const databaseService = new DatabaseService();
+
+// Export types
+export type { WeeklyDataRow, BonusRow };
+
+// Weekly Data Service
+export const weeklyDataService = {
+  getAll: () => databaseService.getAllWeeklyData(),
+  create: (data: Omit<WeeklyDataRow, 'id' | 'created_at' | 'updated_at'>) => 
+    databaseService.createWeeklyData(data),
+  update: (id: string, data: Partial<WeeklyDataRow>) => 
+    databaseService.updateWeeklyData(id, data),
+  delete: (id: string) => databaseService.deleteWeeklyData(id),
 };
 
-// Database initialization
-export const initializeDatabase = async () => {
-  try {
-    // Create weekly_data table
-    const { error: weeklyError } = await supabase.rpc('create_weekly_data_table');
-    if (weeklyError && !weeklyError.message.includes('already exists')) {
-      console.error('Error creating weekly_data table:', weeklyError);
-    }
-
-    // Create bonuses table
-    const { error: bonusError } = await supabase.rpc('create_bonuses_table');
-    if (bonusError && !bonusError.message.includes('already exists')) {
-      console.error('Error creating bonuses table:', bonusError);
-    }
-
-    console.log('Database initialized successfully');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-  }
+// Bonuses Service
+export const bonusesService = {
+  getAll: () => databaseService.getAllBonuses(),
+  create: (data: Omit<BonusRow, 'id' | 'created_at' | 'updated_at'>) => 
+    databaseService.createBonus(data),
+  update: (id: string, data: Partial<BonusRow>) => 
+    databaseService.updateBonus(id, data),
+  delete: (id: string) => databaseService.deleteBonus(id),
 };
