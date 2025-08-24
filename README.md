@@ -1,1 +1,1 @@
-# ex
+# Welcome to your Dyad app
