@@ -1,24 +1,13 @@
-@echo off
-title 🚀 הפעלת מערכת Bolt
-echo =====================================
-echo 🚀 מפעיל את מערכת Bolt...
-echo =====================================
-
-:: מעבר לתיקיית הפרויקט
-cd /d C:\Users\folna\Desktop\bolt.diy-main
-
-:: התקנת pnpm אם חסר
-call npm install -g pnpm
-
-:: התקנת כל התלויות
-call pnpm install
-
-:: הפעלת המערכת ושמירה שהחלון יישאר פתוח
-call pnpm run dev
-
-:: שמירה שהחלון לא ייסגר
-echo =====================================
-echo ✅ המערכת הופעלה. החלון יישאר פתוח.
-echo לחץ Ctrl + C כדי לעצור את השרת או סגור את החלון ידנית.
-echo =====================================
-pause >nul
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>רהיטי הסיטי - מערכת ניהול נתונים</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
