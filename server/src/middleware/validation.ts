@@ -1,40 +1,45 @@
-import { body, validationResult } from 'express-validator';
+import Joi from 'joi';
 import { Request, Response, NextFunction } from 'express';
 
-export const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      details: errors.array()
-    });
+export const validateLogin = (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().min(6).required()
+  });
+
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
   }
   next();
 };
 
-export const validateWeeklyData = [
-  body('startDate').isISO8601().withMessage('Start date must be a valid ISO date'),
-  body('endDate').isISO8601().withMessage('End date must be a valid ISO date'),
-  body('totalUsers').isInt({ min: 0 }).withMessage('Total users must be a non-negative integer'),
-  body('siteActivities').isInt({ min: 0 }).withMessage('Site activities must be a non-negative integer'),
-  body('wentToBranch').isInt({ min: 0 }).withMessage('Went to branch must be a non-negative integer'),
-  body('duplicates').isInt({ min: 0 }).withMessage('Duplicates must be a non-negative integer'),
-  body('totalOrders').isInt({ min: 0 }).withMessage('Total orders must be a non-negative integer'),
-  body('ordersShipped').isInt({ min: 0 }).withMessage('Orders shipped must be a non-negative integer'),
-  body('shippedOrdersAmount').isFloat({ min: 0 }).withMessage('Shipped orders amount must be a non-negative number'),
-  handleValidationErrors
-];
+export const validateWeeklyData = (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    week: Joi.string().required(),
+    calls: Joi.number().integer().min(0).required(),
+    appointments: Joi.number().integer().min(0).required(),
+    sales: Joi.number().integer().min(0).required(),
+    revenue: Joi.number().min(0).required()
+  });
 
-export const validateBonus = [
-  body('date').isISO8601().withMessage('Date must be a valid ISO date'),
-  body('repName').trim().isLength({ min: 1, max: 100 }).withMessage('Rep name must be 1-100 characters'),
-  body('bonusAmount').isFloat({ min: 0 }).withMessage('Bonus amount must be a non-negative number'),
-  body('notes').optional().trim().isLength({ max: 500 }).withMessage('Notes must be less than 500 characters'),
-  handleValidationErrors
-];
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+  next();
+};
 
-export const validateLogin = [
-  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  handleValidationErrors
-];
+export const validateBonus = (req: Request, res: Response, next: NextFunction) => {
+  const schema = Joi.object({
+    date: Joi.string().isoDate().required(),
+    amount: Joi.number().min(0).required(),
+    description: Joi.string().required()
+  });
+
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ error: error.details[0].message });
+  }
+  next();
+};
