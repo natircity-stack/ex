@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { DataRow, BonusRow } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
@@ -8,29 +8,16 @@ import { startOfDay, endOfDay } from "date-fns";
 import { formatCurrency } from '@/lib/utils';
 import { Users, ShoppingCart, Package, Wallet, Percent, Award, Info } from 'lucide-react';
 import { Tooltip as ShadTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { useWeeklyData } from "@/hooks/useWeeklyData";
+import { useBonusData } from "@/hooks/useBonusData";
 
 const Statistics = () => {
   const [dateFilter, setDateFilter] = useState<DateRange | undefined>();
+  const { data: weeklyData, loading: weeklyLoading } = useWeeklyData();
+  const { data: bonusesData, loading: bonusesLoading } = useBonusData();
 
-  const weeklyData: DataRow[] = useMemo(() => {
-    try {
-      const savedData = localStorage.getItem("dataManagerData");
-      return savedData ? JSON.parse(savedData) : [];
-    } catch (error) {
-      console.error("Error reading weekly data from localStorage", error);
-      return [];
-    }
-  }, []);
-
-  const bonusesData: BonusRow[] = useMemo(() => {
-    try {
-      const savedData = localStorage.getItem("bonusesData");
-      return savedData ? JSON.parse(savedData) : [];
-    } catch (error) {
-      console.error("Error reading bonuses data from localStorage", error);
-      return [];
-    }
-  }, []);
+  const loading = weeklyLoading || bonusesLoading;
 
   const filteredWeeklyData = useMemo(() => {
     let data = weeklyData.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
@@ -109,6 +96,17 @@ const Statistics = () => {
   }, [filteredWeeklyData]);
 
   const PIE_COLORS = ['#82ca9d', '#ffc658'];
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 md:p-8" dir="rtl">
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold text-right">דשבורד ניהולי - רהיטי הסיטי</h1>
+        </header>
+        <LoadingSpinner size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 sm:p-6 md:p-8" dir="rtl">

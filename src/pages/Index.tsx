@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { DataRow } from "@/types";
 import { DataTable } from "@/components/DataTable";
 import { DataRowForm } from "@/components/DataRowForm";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Download } from "lucide-react";
 import { showSuccess } from "@/utils/toast";
@@ -10,34 +11,19 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DateRange } from "react-day-picker";
 import { startOfDay, endOfDay } from "date-fns";
 import { exportToCsv } from "@/lib/utils";
+import { useWeeklyData } from "@/hooks/useWeeklyData";
+import { useState } from "react";
 
 type SortConfig = { key: keyof DataRow; direction: 'asc' | 'desc' } | null;
 
 const Index = () => {
-  const [data, setData] = useState<DataRow[]>(() => {
-    try {
-      const savedData = localStorage.getItem("dataManagerData");
-      return savedData ? JSON.parse(savedData) : [];
-    } catch (error) {
-      console.error("Error reading from localStorage", error);
-      return [];
-    }
-  });
-
+  const { data, loading, create, update, delete: deleteData } = useWeeklyData();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<DataRow | null>(null);
   const [rowToDelete, setRowToDelete] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DateRange | undefined>();
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'startDate', direction: 'desc' });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("dataManagerData", JSON.stringify(data));
-    } catch (error) {
-      console.error("Error writing to localStorage", error);
-    }
-  }, [data]);
 
   const processedData = useMemo(() => {
     let filtered = data;
@@ -72,22 +58,35 @@ const Index = () => {
     setSortConfig({ key, direction });
   };
 
-  const handleFormSubmit = (newRowData: Omit<DataRow, 'id'>, id?: string) => {
+  const handleFormSubmit = async (newRowData: Omit<DataRow, 'id'>, id?: string) => {
+    try {
     if (id) {
-      setData(prevData => prevData.map(row => row.id === id ? { ...newRowData, id } : row));
+        await update(id, newRowData);
       showSuccess("השורה עודכנה בהצלחה.");
     } else {
-      const newRow: DataRow = { id: new Date().toISOString() + Math.random(), ...newRowData };
-      setData(prevData => [...prevData, newRow]);
+        await create(newRowData);
       showSuccess("השורה נוספה בהצלחה.");
     }
     setSelectedRow(null);
+    } catch (error) {
+      // Error is already handled in the hook
+    }
   };
 
   const handleOpenAddForm = () => { setSelectedRow(null); setIsFormOpen(true); };
   const handleOpenEditForm = (id: string) => { const rowToEdit = data.find(row => row.id === id); if (rowToEdit) { setSelectedRow(rowToEdit); setIsFormOpen(true); } };
   const handleOpenDeleteDialog = (id: string) => { setRowToDelete(id); setIsConfirmDeleteDialogOpen(true); };
-  const handleDeleteConfirm = () => { if (rowToDelete) { setData(prevData => prevData.filter(row => row.id !== rowToDelete)); setRowToDelete(null); } };
+  const handleDeleteConfirm = async () => { 
+    if (rowToDelete) { 
+      try {
+        await deleteData(rowToDelete);
+        setRowToDelete(null);
+        showSuccess("השורה נמחקה בהצלחה.");
+      } catch (error) {
+        // Error is already handled in the hook
+      }
+    } 
+  };
   const handleExport = () => { exportToCsv(processedData, "סיכום_שבועי"); };
 
   const EmptyState = ({ isFiltered }: { isFiltered: boolean }) => (
@@ -111,7 +110,13 @@ const Index = () => {
       </header>
       
       <main className="mt-4">
-        {processedData.length > 0 ? <DataTable data={processedData} onEdit={handleOpenEditForm} onDelete={handleOpenDeleteDialog} onSort={handleSort} sortConfig={sortConfig} /> : <EmptyState isFiltered={!!dateFilter?.from} />}
+        {loading ? (
+          <LoadingSpinner size="lg" />
+        ) : processedData.length > 0 ? (
+          <DataTable data={processedData} onEdit={handleOpenEditForm} onDelete={handleOpenDeleteDialog} onSort={handleSort} sortConfig={sortConfig} />
+        ) : (
+          <EmptyState isFiltered={!!dateFilter?.from} />
+        )}
       </main>
 
       <DataRowForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} onSubmit={handleFormSubmit} initialData={selectedRow} />

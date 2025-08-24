@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { BonusRow } from "@/types";
 import { BonusesDataTable } from "@/components/BonusesDataTable";
 import { BonusRowForm } from "@/components/BonusRowForm";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PlusCircle, Download } from "lucide-react";
@@ -11,20 +12,13 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DateRange } from "react-day-picker";
 import { startOfDay, endOfDay } from "date-fns";
 import { exportToCsv } from "@/lib/utils";
+import { useBonusData } from "@/hooks/useBonusData";
+import { useState } from "react";
 
 type SortConfig = { key: keyof BonusRow; direction: 'asc' | 'desc' } | null;
 
 const Bonuses = () => {
-  const [data, setData] = useState<BonusRow[]>(() => {
-    try {
-      const savedData = localStorage.getItem("bonusesData");
-      return savedData ? JSON.parse(savedData) : [];
-    } catch (error) {
-      console.error("Error reading from localStorage", error);
-      return [];
-    }
-  });
-
+  const { data, loading, create, update, delete: deleteData } = useBonusData();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isConfirmDeleteDialogOpen, setIsConfirmDeleteDialogOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState<BonusRow | null>(null);
@@ -32,14 +26,6 @@ const Bonuses = () => {
   const [dateFilter, setDateFilter] = useState<DateRange | undefined>();
   const [nameFilter, setNameFilter] = useState("");
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'date', direction: 'desc' });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("bonusesData", JSON.stringify(data));
-    } catch (error) {
-      console.error("Error writing to localStorage", error);
-    }
-  }, [data]);
 
   const processedData = useMemo(() => {
     let filtered = data;
@@ -77,22 +63,35 @@ const Bonuses = () => {
     setSortConfig({ key, direction });
   };
 
-  const handleFormSubmit = (newRowData: Omit<BonusRow, 'id'>, id?: string) => {
+  const handleFormSubmit = async (newRowData: Omit<BonusRow, 'id'>, id?: string) => {
+    try {
     if (id) {
-      setData(prevData => prevData.map(row => row.id === id ? { ...newRowData, id } : row));
+        await update(id, newRowData);
       showSuccess("השורה עודכנה בהצלחה.");
     } else {
-      const newRow: BonusRow = { id: new Date().toISOString() + Math.random(), ...newRowData };
-      setData(prevData => [...prevData, newRow]);
+        await create(newRowData);
       showSuccess("השורה נוספה בהצלחה.");
     }
     setSelectedRow(null);
+    } catch (error) {
+      // Error is already handled in the hook
+    }
   };
 
   const handleOpenAddForm = () => { setSelectedRow(null); setIsFormOpen(true); };
   const handleOpenEditForm = (id: string) => { const rowToEdit = data.find(row => row.id === id); if (rowToEdit) { setSelectedRow(rowToEdit); setIsFormOpen(true); } };
   const handleOpenDeleteDialog = (id: string) => { setRowToDelete(id); setIsConfirmDeleteDialogOpen(true); };
-  const handleDeleteConfirm = () => { if (rowToDelete) { setData(prevData => prevData.filter(row => row.id !== rowToDelete)); setRowToDelete(null); } };
+  const handleDeleteConfirm = async () => { 
+    if (rowToDelete) { 
+      try {
+        await deleteData(rowToDelete);
+        setRowToDelete(null);
+        showSuccess("השורה נמחקה בהצלחה.");
+      } catch (error) {
+        // Error is already handled in the hook
+      }
+    } 
+  };
   const handleExport = () => { exportToCsv(processedData, "בונוסים"); };
 
   const EmptyState = ({ isFiltered }: { isFiltered: boolean }) => (
@@ -117,7 +116,13 @@ const Bonuses = () => {
       </header>
       
       <main className="mt-4">
-        {processedData.length > 0 ? <BonusesDataTable data={processedData} onEdit={handleOpenEditForm} onDelete={handleOpenDeleteDialog} onSort={handleSort} sortConfig={sortConfig} /> : <EmptyState isFiltered={!!dateFilter?.from || !!nameFilter} />}
+        {loading ? (
+          <LoadingSpinner size="lg" />
+        ) : processedData.length > 0 ? (
+          <BonusesDataTable data={processedData} onEdit={handleOpenEditForm} onDelete={handleOpenDeleteDialog} onSort={handleSort} sortConfig={sortConfig} />
+        ) : (
+          <EmptyState isFiltered={!!dateFilter?.from || !!nameFilter} />
+        )}
       </main>
 
       <BonusRowForm isOpen={isFormOpen} onOpenChange={setIsFormOpen} onSubmit={handleFormSubmit} initialData={selectedRow} />
