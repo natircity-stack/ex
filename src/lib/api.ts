@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 class ApiClient {
   private token: string | null = null;
@@ -8,6 +8,11 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    // If no API URL is configured, work in offline mode
+    if (!API_BASE_URL) {
+      throw new Error('API not available - working in offline mode');
+    }
+    
     const url = `${API_BASE_URL}${endpoint}`;
     
     const config: RequestInit = {
@@ -41,6 +46,20 @@ class ApiClient {
 
   // Auth methods
   async login(email: string, password: string) {
+    // For demo purposes, allow login with default credentials without API
+    if (!API_BASE_URL && email === 'admin@company.com' && password === 'Admin123!') {
+      const mockResponse = {
+        token: 'demo-token-' + Date.now(),
+        user: { id: '1', email, name: 'Administrator' }
+      };
+      
+      this.token = mockResponse.token;
+      localStorage.setItem('authToken', mockResponse.token);
+      localStorage.setItem('user', JSON.stringify(mockResponse.user));
+      
+      return mockResponse;
+    }
+    
     const response = await this.request<{token: string, user: any}>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -57,11 +76,12 @@ class ApiClient {
     this.token = null;
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
-    window.location.href = '/login';
+    window.location.reload();
   }
 
   isAuthenticated(): boolean {
-    return !!this.token;
+    // Allow demo mode authentication
+    return !!this.token || localStorage.getItem('authToken') === 'demo-mode';
   }
 
   getUser() {

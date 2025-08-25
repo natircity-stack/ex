@@ -98,8 +98,11 @@ export function LoginForm({ onLoginSuccess }: LoginFormProps) {
           </Form>
           <div className="mt-4 text-center text-sm text-gray-600">
             <p>משתמש ברירת מחדל:</p>
-            <p>אימייל: admin@company.com</p>
-            <p>סיסמה: Admin123!</p>
+            <p className="font-mono bg-gray-100 p-2 rounded">אימייל: admin@company.com</p>
+            <p className="font-mono bg-gray-100 p-2 rounded mt-1">סיסמה: Admin123!</p>
+            <p className="text-xs text-gray-500 mt-2">
+              * המערכת פועלת במצב הדגמה ללא חיבור לשרת
+            </p>
           </div>
         </CardContent>
       </Card>
